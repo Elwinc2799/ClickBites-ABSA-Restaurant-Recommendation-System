@@ -3,7 +3,7 @@ from pymongo import MongoClient, InsertOne
 import os
 import random
 
-client = MongoClient("mongodb+srv://windev:windev@cluster0.mkcvmve.mongodb.net/")
+client = MongoClient("mongodb+srv://xxx:xxx@cluster0.mkcvmve.mongodb.net/")        # Use your created mongodb cluster URI
 db = client.ckbt_db2
 
 # List of collections and corresponding file paths
