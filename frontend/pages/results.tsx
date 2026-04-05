@@ -109,24 +109,35 @@ function Results() {
                 }
             );
 
-            const newBusinessData = res.data.map((business: Business) => ({
-                _id: business._id,
-                name: business.name,
-                address: business.address,
-                city: business.city,
-                state: business.state,
-                latitude: business.latitude,
-                longitude: business.longitude,
-                stars: business.stars,
-                review_count: business.review_count,
-                categories: business.categories,
-                hours: business.hours,
-                description: business.description,
-                view_count: business.view_count,
-                vector: business.vector,
-                business_pic: business.business_pic,
-                similarity: business.similarity,
-            }));
+            const newBusinessData = res.data.map((business: any) => {
+                const scores = business.aspect_scores || {};
+                return {
+                    _id: business.business_id || business._id,
+                    name: business.name,
+                    address: business.address,
+                    city: business.city,
+                    state: business.state,
+                    latitude: business.latitude,
+                    longitude: business.longitude,
+                    stars: business.stars,
+                    review_count: business.review_count,
+                    categories: Array.isArray(business.categories)
+                        ? business.categories.join(', ')
+                        : (business.categories || ''),
+                    hours: business.hours || null,
+                    description: business.description || null,
+                    view_count: business.view_count || business.review_count || 0,
+                    vector: [
+                        scores.food ?? 0,
+                        scores.service ?? 0,
+                        scores.price ?? 0,
+                        scores.ambience ?? 0,
+                        scores.misc ?? 0,
+                    ],
+                    business_pic: business.photo_url || business.business_pic || null,
+                    similarity: business.similarity || 0,
+                };
+            });
 
             setBusinesses(newBusinessData);
             setIsLoading(false);
@@ -144,6 +155,9 @@ function Results() {
     useEffect(() => {
         const filterAndSortBusinesses = () => {
             let filteredBusinesses = businesses.filter((business: Business) => {
+                // Skip distance filter when user location is unavailable
+                if (latitude === null || longitude === null) return true;
+
                 const distance = haversineDistance(
                     latitude,
                     longitude,
