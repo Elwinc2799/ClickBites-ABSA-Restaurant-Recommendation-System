@@ -65,11 +65,7 @@ interface Business {
 }
 
 const blankBusinessPics = [
-    'business_1.jpg',
-    'business_2.jpg',
-    'business_3.jpg',
-    'business_4.jpg',
-    'business_5.jpg',
+    'blank-businesspic.jpg',
 ];
 
 function Business(props: { business: Business }) {
