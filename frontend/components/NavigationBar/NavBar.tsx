@@ -98,7 +98,7 @@ function NavBar(props: Props) {
                 ];
 
                 // cast each userData.vector to a string
-                let newVector = userData.vector.map(
+                let newVector = (userData.preference_vector || userData.vector || []).map(
                     (value: number, index: number) => {
                         return {
                             text: newVectorText[index],
