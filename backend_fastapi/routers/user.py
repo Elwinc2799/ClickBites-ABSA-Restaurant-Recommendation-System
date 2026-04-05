@@ -26,8 +26,8 @@ def get_supabase():
 async def signup(
     user: str = Form(...),
     profile_pic: Optional[UploadFile] = File(None),
-    conn: asyncpg.Connection = Depends(get_db)
 ):
+    """Uses Supabase REST API (HTTPS) — no direct PostgreSQL connection needed."""
     try:
         user_data = json.loads(user)
         name = user_data.get("name")
@@ -37,17 +37,27 @@ async def signup(
         if not all([name, email, password]):
             raise HTTPException(status_code=400, detail="name, email, and password are required")
 
-        existing = await conn.fetchrow("SELECT user_id FROM users WHERE email = $1", email)
-        if existing:
+        import asyncio
+        supabase = get_supabase()
+
+        # Check if email exists
+        existing = await asyncio.to_thread(
+            lambda: supabase.table("users").select("user_id").eq("email", email).execute()
+        )
+        if existing.data:
             raise HTTPException(status_code=409, detail="Email already registered")
 
         user_id = str(uuid.uuid4())
         password_hash = hash_password(password)
 
-        await conn.execute("""
-            INSERT INTO users (user_id, name, email, password_hash)
-            VALUES ($1, $2, $3, $4)
-        """, user_id, name, email, password_hash)
+        await asyncio.to_thread(
+            lambda: supabase.table("users").insert({
+                "user_id": user_id,
+                "name": name,
+                "email": email,
+                "password_hash": password_hash,
+            }).execute()
+        )
 
         return {"message": "User created successfully", "user_id": user_id}
 
@@ -58,21 +68,20 @@ async def signup(
 
 
 @router.post("/login")
-async def login(
-    body: UserLogin,
-    conn: asyncpg.Connection = Depends(get_db)
-):
+async def login(body: UserLogin):
+    """Uses Supabase REST API (HTTPS) — no direct PostgreSQL connection needed."""
     try:
-        email = body.email
-        password = body.password
+        import asyncio
+        supabase = get_supabase()
 
-        row = await conn.fetchrow(
-            "SELECT user_id, password_hash FROM users WHERE email = $1", email
+        result = await asyncio.to_thread(
+            lambda: supabase.table("users").select("user_id,password_hash").eq("email", body.email).execute()
         )
-        if not row:
+        if not result.data:
             raise HTTPException(status_code=404, detail="User not found")
 
-        if not verify_password(password, row["password_hash"]):
+        row = result.data[0]
+        if not verify_password(body.password, row["password_hash"]):
             raise HTTPException(status_code=404, detail="Invalid credentials")
 
         token = create_token(row["user_id"])
