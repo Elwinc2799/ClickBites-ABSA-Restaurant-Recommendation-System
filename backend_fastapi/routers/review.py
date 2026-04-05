@@ -1,17 +1,25 @@
 import uuid
 import asyncio
 from typing import List, Optional
-import asyncpg
 import numpy as np
 import pandas as pd
 from scipy import stats
 from fastapi import APIRouter, Depends, HTTPException
-from sklearn.preprocessing import MinMaxScaler
+from supabase import create_client
+import os
 
-from database import get_db
 from models.review import ReviewCreate, ReviewUpdate
+from auth import get_current_user
 
 router = APIRouter(prefix="/api", tags=["reviews"])
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+
+
+def get_supabase():
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
+
 
 # Lazy-load the AI module to avoid startup delay
 _generate_vector = None
@@ -28,7 +36,6 @@ def get_generate_vector():
 # ─── Vector Utilities ────────────────────────────────────────────────────────
 
 def normalize_vector(vector: list) -> list:
-    """Map [-1,1] aspect scores to [1,5] range"""
     return [(x + 1) / 2 * 4 + 1 for x in vector]
 
 
@@ -91,46 +98,45 @@ def calculate_scores(user_df, review_df) -> pd.DataFrame:
     return merged_df.groupby("user_id").apply(calc_scores)
 
 
-async def update_user_vector(conn: asyncpg.Connection, user_id: str, review_vector: list):
-    """Update user preference vector after a new review (PostgreSQL version)"""
-    # Get all user's reviews
-    user_reviews = await conn.fetch("""
-        SELECT r.review_id, r.business_id, r.stars, r.aspect_vector, r.user_id
-        FROM reviews r WHERE r.user_id = $1
-    """, user_id)
+def parse_vector_str(s) -> list:
+    """Parse pgvector string '[0.1,0.2,...]' to list of floats."""
+    if s is None:
+        return [0.0] * 5
+    if isinstance(s, list):
+        return [float(x) for x in s]
+    return [float(x) for x in str(s).strip("[]").split(",")]
 
-    if not user_reviews:
-        return
 
-    # Get current user data
-    user_row = await conn.fetchrow(
-        "SELECT user_id, preference_vector FROM users WHERE user_id = $1", user_id
+async def update_user_vector(supabase, user_id: str, review_vector: list):
+    """Update user preference vector after a new review (via Supabase REST)."""
+    user_reviews_raw = await asyncio.to_thread(
+        lambda: supabase.rpc("get_user_reviews_for_vector", {"uid": user_id}).execute()
     )
-    if not user_row:
+    if not user_reviews_raw.data:
         return
 
-    current_vector = list(user_row["preference_vector"]) if user_row["preference_vector"] else [0.0] * 5
+    user_row_raw = await asyncio.to_thread(
+        lambda: supabase.rpc("get_user_preference_vector", {"uid": user_id}).execute()
+    )
+    current_vector = parse_vector_str(user_row_raw.data if user_row_raw.data else None)
 
-    # Build DataFrames
     review_data = [{
         "user_id": r["user_id"],
         "business_id": r["business_id"],
         "stars": float(r["stars"] or 3),
-        "aspect_vector": list(r["aspect_vector"]) if r["aspect_vector"] else [0] * 5
-    } for r in user_reviews]
+        "aspect_vector": parse_vector_str(r["aspect_vector"]),
+    } for r in user_reviews_raw.data]
 
     user_data = [{"user_id": user_id, "preference_vector": current_vector}]
     review_df = pd.DataFrame(review_data)
     user_df = pd.DataFrame(user_data)
 
-    # Calculate updated scores
     try:
         updated_scores = calculate_scores(user_df, review_df)
         new_vector = updated_scores.loc[user_id, "vector"]
     except Exception:
         new_vector = [0.0] * 5
 
-    # Apply update formula
     vector_to_update = []
     for i in range(5):
         rv = review_vector[i] if i < len(review_vector) else 0
@@ -143,39 +149,33 @@ async def update_user_vector(conn: asyncpg.Connection, user_id: str, review_vect
         else:
             vector_to_update.append(current_vector[i])
 
-    # Normalize
     try:
         vector_to_update = normalize_to_distribution(vector_to_update)
     except Exception:
         vector_to_update = [max(0.0, min(1.0, v)) for v in vector_to_update]
 
-    # Average stars
-    avg_stars = sum(float(r["stars"] or 3) for r in user_reviews) / len(user_reviews)
-
     vector_str = f"[{','.join(str(v) for v in vector_to_update)}]"
-    await conn.execute("""
-        UPDATE users SET preference_vector = $1::vector, updated_at = NOW()
-        WHERE user_id = $2
-    """, vector_str, user_id)
+    await asyncio.to_thread(
+        lambda: supabase.table("users").update({"preference_vector": vector_str}).eq("user_id", user_id).execute()
+    )
 
 
-async def update_business_scores(conn: asyncpg.Connection, business_id: str):
-    """Recalculate business stars and aspect scores from all reviews"""
-    reviews = await conn.fetch("""
-        SELECT stars, aspect_vector FROM reviews WHERE business_id = $1
-    """, business_id)
-
-    if not reviews:
+async def update_business_scores(supabase, business_id: str):
+    """Recalculate business stars and aspect scores from all reviews."""
+    reviews_raw = await asyncio.to_thread(
+        lambda: supabase.rpc("get_business_reviews_for_scores", {"bid": business_id}).execute()
+    )
+    if not reviews_raw.data:
         return
 
+    reviews = reviews_raw.data
     avg_stars = sum(float(r["stars"] or 3) for r in reviews) / len(reviews)
 
     avg_vector = [0.0] * 5
     for r in reviews:
-        if r["aspect_vector"]:
-            for i, v in enumerate(list(r["aspect_vector"])):
-                avg_vector[i] += float(v)
-
+        vec = parse_vector_str(r["aspect_vector"])
+        for i, v in enumerate(vec):
+            avg_vector[i] += float(v)
     for i in range(5):
         avg_vector[i] /= len(reviews)
 
@@ -184,39 +184,43 @@ async def update_business_scores(conn: asyncpg.Connection, business_id: str):
         "service": avg_vector[1],
         "price": avg_vector[2],
         "ambience": avg_vector[3],
-        "misc": avg_vector[4]
+        "misc": avg_vector[4],
     }
 
-    import json
-    await conn.execute("""
-        UPDATE businesses
-        SET stars = $1, aspect_scores = $2::jsonb, review_count = $3, updated_at = NOW()
-        WHERE business_id = $4
-    """, avg_stars, json.dumps(aspect_scores), len(reviews), business_id)
+    await asyncio.to_thread(
+        lambda: supabase.table("businesses").update({
+            "stars": avg_stars,
+            "aspect_scores": aspect_scores,
+            "review_count": len(reviews),
+        }).eq("business_id", business_id).execute()
+    )
 
 
 # ─── Routes ──────────────────────────────────────────────────────────────────
 
 @router.post("/business/{business_id}")
-async def create_review(
-    business_id: str,
-    body: ReviewCreate,
-    conn: asyncpg.Connection = Depends(get_db)
-):
+async def create_review(business_id: str, body: ReviewCreate):
+    """Uses Supabase REST API + RPC for vector updates."""
     try:
-        # Generate ABSA vector in thread pool (CPU-intensive)
         vector_score = await asyncio.to_thread(get_generate_vector(), body.text)
         vector_str = f"[{','.join(str(v) for v in vector_score)}]"
 
         review_id = str(uuid.uuid4())
-        await conn.execute("""
-            INSERT INTO reviews (review_id, business_id, user_id, text, stars, aspect_vector)
-            VALUES ($1, $2, $3, $4, $5, $6::vector)
-        """, review_id, business_id, body.user_id, body.text, body.stars, vector_str)
+        supabase = get_supabase()
 
-        # Update user preference vector and business scores
-        await update_user_vector(conn, body.user_id, vector_score)
-        await update_business_scores(conn, business_id)
+        await asyncio.to_thread(
+            lambda: supabase.table("reviews").insert({
+                "review_id": review_id,
+                "business_id": business_id,
+                "user_id": body.user_id,
+                "text": body.text,
+                "stars": body.stars,
+                "aspect_vector": vector_str,
+            }).execute()
+        )
+
+        await update_user_vector(supabase, body.user_id, vector_score)
+        await update_business_scores(supabase, business_id)
 
         return {"message": "Review created successfully", "review_id": review_id}
 
@@ -225,22 +229,22 @@ async def create_review(
 
 
 @router.put("/business/{business_id}/{review_id}")
-async def update_review(
-    business_id: str,
-    review_id: str,
-    body: ReviewUpdate,
-    conn: asyncpg.Connection = Depends(get_db)
-):
+async def update_review(business_id: str, review_id: str, body: ReviewUpdate):
+    """Uses Supabase REST API."""
     try:
         vector_score = await asyncio.to_thread(get_generate_vector(), body.text)
         vector_str = f"[{','.join(str(v) for v in vector_score)}]"
 
-        await conn.execute("""
-            UPDATE reviews SET stars = $1, text = $2, aspect_vector = $3::vector
-            WHERE review_id = $4
-        """, body.stars, body.text, vector_str, review_id)
+        supabase = get_supabase()
+        await asyncio.to_thread(
+            lambda: supabase.table("reviews").update({
+                "stars": body.stars,
+                "text": body.text,
+                "aspect_vector": vector_str,
+            }).eq("review_id", review_id).execute()
+        )
 
-        await update_business_scores(conn, business_id)
+        await update_business_scores(supabase, business_id)
 
         return {"message": "Review updated successfully"}
 
@@ -249,14 +253,14 @@ async def update_review(
 
 
 @router.delete("/business/{business_id}/{review_id}")
-async def delete_review(
-    business_id: str,
-    review_id: str,
-    conn: asyncpg.Connection = Depends(get_db)
-):
+async def delete_review(business_id: str, review_id: str):
+    """Uses Supabase REST API."""
     try:
-        await conn.execute("DELETE FROM reviews WHERE review_id = $1", review_id)
-        await update_business_scores(conn, business_id)
+        supabase = get_supabase()
+        await asyncio.to_thread(
+            lambda: supabase.table("reviews").delete().eq("review_id", review_id).execute()
+        )
+        await update_business_scores(supabase, business_id)
         return {"message": "Review deleted successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
