@@ -96,13 +96,18 @@ function Profile() {
 
             setName(userData.name);
             setEmail(userData.email);
-            setPhone(userData.phone);
-            setAddress(userData.address);
-            setState(userData.state);
-            setCity(userData.city);
-            setReviewCount(userData.review_count);
-            setStars(userData.average_stars);
-            setProfilePic(userData.profile_pic);
+            setPhone(userData.phone || '');
+            setAddress(userData.address || '');
+            setState(userData.state || '');
+            setCity(userData.city || '');
+            const reviewsList = userData.reviews || [];
+            setReviewCount(userData.review_count ?? reviewsList.length);
+            const avgStars = userData.average_stars ??
+                (reviewsList.length > 0
+                    ? reviewsList.reduce((sum: number, r: any) => sum + (r.stars || 0), 0) / reviewsList.length
+                    : 0);
+            setStars(avgStars);
+            setProfilePic(userData.profile_pic || '');
 
             const newVectorText = [
                 'Food',
@@ -113,7 +118,7 @@ function Profile() {
             ];
 
             // cast each userData.vector to a string
-            let newVector = userData.vector.map(
+            let newVector = (userData.preference_vector || userData.vector || []).map(
                 (value: number, index: number) => {
                     return {
                         text: newVectorText[index],
@@ -124,15 +129,15 @@ function Profile() {
 
             setVectorScores(newVector);
 
-            const newReviews = userData.reviews.map((userReview: Review) => ({
-                _id: userReview._id,
-                user_id: userReview.user_id,
-                business_id: userReview.business_id,
-                business_name: userReview.business_name,
-                business_city: userReview.business_city,
-                stars: userReview.stars,
-                text: userReview.text,
-                date: userReview.date,
+            const newReviews = reviewsList.map((userReview: any) => ({
+                _id: userReview.review_id || userReview._id || '',
+                user_id: userReview.user_id || '',
+                business_id: userReview.business_id || '',
+                business_name: userReview.business_name || '',
+                business_city: userReview.business_city || '',
+                stars: userReview.stars || 0,
+                text: userReview.text || '',
+                date: userReview.created_at || userReview.date || '',
             }));
 
             setReviews(newReviews);
