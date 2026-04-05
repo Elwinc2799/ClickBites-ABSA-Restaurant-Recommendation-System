@@ -13,7 +13,8 @@ import { toast } from 'react-toastify';
 import { useRouter } from 'next/router';
 import { getCookie } from 'cookies-next';
 import { LocationContext } from '@/components/utils/LocationContext';
-import MapComponent from '@/components/Map/MapComponent';
+import dynamic from 'next/dynamic';
+const MapComponent = dynamic(() => import('@/components/Map/MapComponent'), { ssr: false });
 
 interface Business {
     name: string;

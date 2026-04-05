@@ -7,7 +7,8 @@ import axios from 'axios';
 import { getCookie } from 'cookies-next';
 import ResultCard from '@/components/ResultCard/ResultCard';
 import UseLoadingAnimation from '@/components/utils/UseLoadingAnimation';
-import MapComponent from '@/components/Map/MapComponent';
+import dynamic from 'next/dynamic';
+const MapComponent = dynamic(() => import('@/components/Map/MapComponent'), { ssr: false });
 import { LocationContext } from '@/components/utils/LocationContext';
 import { UseLoginStatus } from '@/components/utils/UseLoginStatus';
 

@@ -1,12 +1,16 @@
-import React, { useEffect, useRef, useContext } from 'react';
-import { Loader } from '@googlemaps/js-api-loader';
+import React, { useContext, useState, useRef, useMemo } from 'react';
+import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import { LocationContext } from '@/components/utils/LocationContext';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
 
-declare global {
-    interface Window {
-        google: any;
-    }
-}
+// Fix for default marker icons in Next.js
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
 
 interface MapComponentProps {
     setLat: (lat: number) => void;
@@ -15,108 +19,140 @@ interface MapComponentProps {
     width: string;
 }
 
-function MapComponent({ setLat, setLng, height, width }: MapComponentProps) {
-    // Get the latitude and longitude from the LocationContext
-    const { latitude, longitude } = useContext(LocationContext);
+// Component to handle map centering
+function MapController({ center }: { center: [number, number] }) {
+    const map = useMap();
+    React.useEffect(() => {
+        map.setView(center, map.getZoom());
+    }, [center, map]);
+    return null;
+}
 
-    // Get the Google Maps API key from the next.config.js file
-    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+// Component to handle search
+function SearchControl({ onLocationSelect }: { onLocationSelect: (lat: number, lng: number) => void }) {
+    const [searchQuery, setSearchQuery] = useState('');
+    const [isSearching, setIsSearching] = useState(false);
+    const map = useMap();
 
-    // Create a ref for the search box
-    const searchBoxRef = useRef<HTMLInputElement>(null);
-    
-    useEffect(() => {
-        if (!apiKey) {
-            throw new Error('NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is not set');
-        }
-        const loader = new Loader({
-            apiKey: apiKey,
-            version: 'weekly',
-            libraries: ['places'], // you need to load the places library
-        });
+    const handleSearch = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!searchQuery.trim()) return;
 
-        let map: google.maps.Map
+        setIsSearching(true);
+        try {
+            // Use Nominatim (OpenStreetMap's geocoding service)
+            const response = await fetch(
+                `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=1`
+            );
+            const data = await response.json();
 
-        // Load the Google Maps API
-        loader.load().then(() => {
-            const mapElement = document.getElementById('map');
-            if (mapElement) {
-                // Create a new map instance and set the center to the user's location
-                const pos = {
-                    lat: latitude ?? 0,
-                    lng: longitude ?? 0,
-                };
+            if (data && data.length > 0) {
+                const { lat, lon } = data[0];
+                const latitude = parseFloat(lat);
+                const longitude = parseFloat(lon);
 
-                map = new google.maps.Map(mapElement as HTMLElement, {
-                    center: pos,
-                    zoom: 8,
-                });
-
-                // Create a new marker instance
-                const marker = new google.maps.Marker({
-                    position: pos,
-                    map,
-                    draggable: true,
-                });
-                
-                // Add a listener to the marker to update the latitude and longitude when the marker is dragged
-                google.maps.event.addListener(
-                    marker,
-                    'dragend',
-                    function (evt: google.maps.MouseEvent) {
-                        setLat(evt.latLng.lat());
-                        setLng(evt.latLng.lng());
-                    }
-                );
-                
-                // Create a new search box instance and add it to the map
-                const searchBox = new google.maps.places.SearchBox(searchBoxRef.current as HTMLInputElement);
-                map.controls[window.google.maps.ControlPosition.TOP_LEFT].push(searchBoxRef.current as Node);
-
-                // Bias the SearchBox results towards current map's viewport.
-                map.addListener('bounds_changed', function () {
-                    searchBox.setBounds(map.getBounds() as google.maps.LatLngBounds);
-                });
-
-                // Listen for the event fired when the user selects a prediction and retrieve
-                searchBox.addListener('places_changed', function () {
-                    const places = searchBox.getPlaces();
-
-                    if (places.length == 0) {
-                        return;
-                    }
-
-                    // Clear out the old markers
-                    marker.setMap(null);
-
-                    // For each place, get the icon, name and location.
-                    const bounds = new window.google.maps.LatLngBounds();
-                    places.forEach(function (place) {
-                        if (!place.geometry) {
-                            console.log("Returned place contains no geometry");
-                            return;
-                        }
-
-                        marker.setPosition(place.geometry.location);
-                        marker.setMap(map);
-
-                        if (place.geometry.viewport) {
-                            // Only geocodes have viewport.
-                            bounds.union(place.geometry.viewport);
-                        } else {
-                            bounds.extend(place.geometry.location);
-                        }
-                    });
-                    map.fitBounds(bounds);
-                });
+                map.setView([latitude, longitude], 13);
+                onLocationSelect(latitude, longitude);
             }
-        });
-    }, [apiKey, latitude, longitude, setLat, setLng]);
+        } catch (error) {
+            console.error('Search error:', error);
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
+    return null; // The actual search box is rendered outside the MapContainer
+}
+
+function MapComponent({ setLat, setLng, height, width }: MapComponentProps) {
+    const { latitude, longitude } = useContext(LocationContext);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [isSearching, setIsSearching] = useState(false);
+    const mapRef = useRef<L.Map | null>(null);
+
+    // Use user's location or default to [0, 0]
+    const center: [number, number] = useMemo(
+        () => [latitude ?? 0, longitude ?? 0],
+        [latitude, longitude]
+    );
+
+    const [markerPosition, setMarkerPosition] = useState<[number, number]>(center);
+
+    const handleSearch = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!searchQuery.trim()) return;
+
+        setIsSearching(true);
+        try {
+            const response = await fetch(
+                `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=1`
+            );
+            const data = await response.json();
+
+            if (data && data.length > 0) {
+                const { lat, lon } = data[0];
+                const latitude = parseFloat(lat);
+                const longitude = parseFloat(lon);
+
+                setMarkerPosition([latitude, longitude]);
+                setLat(latitude);
+                setLng(longitude);
+
+                if (mapRef.current) {
+                    mapRef.current.setView([latitude, longitude], 13);
+                }
+            }
+        } catch (error) {
+            console.error('Search error:', error);
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
+    // Event handlers for draggable marker
+    const eventHandlers = useMemo(
+        () => ({
+            dragend(e: L.DragEndEvent) {
+                const marker = e.target;
+                const position = marker.getLatLng();
+                setMarkerPosition([position.lat, position.lng]);
+                setLat(position.lat);
+                setLng(position.lng);
+            },
+        }),
+        [setLat, setLng]
+    );
 
     return (
         <div style={{ height: `${height}`, width: '100%' }}>
-            <input style={{ width: `${width}` }} ref={searchBoxRef} type="text" placeholder="Search places..." className='rounded-sm w-80 h-11 mt-2 text-lg p-2'/>
-            <div id="map" style={{ height: '100%', width: '100%' }}></div>
+            <form onSubmit={handleSearch} style={{ marginBottom: '8px' }}>
+                <input
+                    style={{ width: `${width}` }}
+                    type="text"
+                    placeholder="Search places..."
+                    className="rounded-sm w-80 h-11 mt-2 text-lg p-2"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    disabled={isSearching}
+                />
+            </form>
+            <MapContainer
+                center={center}
+                zoom={8}
+                style={{ height: 'calc(100% - 52px)', width: '100%' }}
+                ref={mapRef}
+            >
+                <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                <Marker
+                    position={markerPosition}
+                    draggable={true}
+                    eventHandlers={eventHandlers}
+                />
+                <MapController center={markerPosition} />
+            </MapContainer>
         </div>
     );
 }
