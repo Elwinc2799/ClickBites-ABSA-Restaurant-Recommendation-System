@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { Background } from '@/components/Background/Background';
 import NavBar from '@/components/NavigationBar/NavBar';
@@ -9,7 +9,6 @@ import ResultCard from '@/components/ResultCard/ResultCard';
 import UseLoadingAnimation from '@/components/utils/UseLoadingAnimation';
 import dynamic from 'next/dynamic';
 const MapComponent = dynamic(() => import('@/components/Map/MapComponent'), { ssr: false });
-import { LocationContext } from '@/components/utils/LocationContext';
 import { UseLoginStatus } from '@/components/utils/UseLoginStatus';
 
 interface Business {
@@ -88,11 +87,11 @@ function Results() {
 
     const [isToggled, setIsToggled] = useState(false);
 
-    // set default latitude and longitude to be default location based on location provider
-    const { latitude: defaultLatitude, longitude: defaultLongitude } =
-        useContext(LocationContext);
-    const [latitude, setLatitude] = useState<number | null>(defaultLatitude);
-    const [longitude, setLongitude] = useState<number | null>(defaultLongitude);
+    // Distance filter is only active when the user explicitly sets a location via the map
+    // (drag marker or search). Geolocation is used by MapComponent itself for centering,
+    // not for filtering — otherwise non-US users would always see 0 results.
+    const [latitude, setLatitude] = useState<number | null>(null);
+    const [longitude, setLongitude] = useState<number | null>(null);
 
     // get all businesses based on search query from backend
     useEffect(() => {
@@ -147,12 +146,6 @@ function Results() {
         };
         fetchData();
     }, [search_query]);
-
-    // set default latitude and longitude to be default location based on location provider
-    useEffect(() => {
-        setLatitude(defaultLatitude);
-        setLongitude(defaultLongitude);
-    }, [defaultLatitude, defaultLongitude]);
 
     // Filter and sort businesses
     useEffect(() => {
