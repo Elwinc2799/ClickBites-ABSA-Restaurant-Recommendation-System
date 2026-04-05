@@ -24,7 +24,14 @@ interface ResultCardProps {
 }
 
 const blankBusinessPics = [
-    'blank-businesspic.jpg',
+    'cafe.jpg',
+    'chinese.jpg',
+    'fastfood.jpg',
+    'indian.jpg',
+    'japanese.jpg',
+    'korean-restaurant.jpg',
+    'malay.jpg',
+    'western.jpg',
 ];
 
 function ResultCard({ business, index, isToggled }: ResultCardProps) {

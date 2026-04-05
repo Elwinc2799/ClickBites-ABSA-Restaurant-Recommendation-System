@@ -87,11 +87,23 @@ function Results() {
 
     const [isToggled, setIsToggled] = useState(false);
 
-    // Distance filter is only active when the user explicitly sets a location via the map
-    // (drag marker or search). Geolocation is used by MapComponent itself for centering,
-    // not for filtering — otherwise non-US users would always see 0 results.
     const [latitude, setLatitude] = useState<number | null>(null);
     const [longitude, setLongitude] = useState<number | null>(null);
+
+    // Auto-detect user location for distance filtering
+    useEffect(() => {
+        if (typeof window !== 'undefined' && navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    setLatitude(pos.coords.latitude);
+                    setLongitude(pos.coords.longitude);
+                },
+                () => {
+                    // Permission denied or unavailable — no distance filter applied
+                }
+            );
+        }
+    }, []);
 
     // get all businesses based on search query from backend
     useEffect(() => {
