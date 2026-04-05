@@ -133,24 +133,29 @@ const AspectRadar: React.FC<AspectRadarProps> = ({
         };
 
         const fetchDataAndUserData = async () => {
-            const userId = await fetchData();
+            try {
+                const userId = await fetchData();
 
-            const userData = await fetchUserData(userId);
+                const userData = await fetchUserData(userId);
 
-            const newVectorText = ['Food', 'Serv.', 'Pric.', 'Ambi.', 'Misc.'];
+                const newVectorText = ['Food', 'Serv.', 'Pric.', 'Ambi.', 'Misc.'];
 
-            // cast each userData.vector to a string
-            let newVector = (userData.preference_vector || userData.vector || []).map(
-                (value: number, index: number) => {
-                    return {
-                        text: newVectorText[index],
-                        userScore: (value * 100).toFixed(1).toString(),
-                    };
-                }
-            );
+                // cast each userData.vector to a string
+                let newVector = (userData.preference_vector || userData.vector || []).map(
+                    (value: number, index: number) => {
+                        return {
+                            text: newVectorText[index],
+                            userScore: (value * 100).toFixed(1).toString(),
+                        };
+                    }
+                );
 
-            setVectorUserScores(newVector);
-            setIsLoading(false);
+                setVectorUserScores(newVector);
+            } catch {
+                // profile fetch failed — show chart without user overlay
+            } finally {
+                setIsLoading(false);
+            }
         };
 
         if (UseLoginStatus()) {

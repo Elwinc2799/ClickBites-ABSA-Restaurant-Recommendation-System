@@ -1,13 +1,12 @@
 import uuid
 import json
+import asyncio
 from typing import Optional
-import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Form, UploadFile, File
 from fastapi.responses import JSONResponse
 from supabase import create_client
 import os
 
-from database import get_db
 from auth import hash_password, verify_password, create_token, get_current_user
 from models.user import UserLogin
 
@@ -20,6 +19,16 @@ BUCKET = "business-photos"
 
 def get_supabase():
     return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+
+def parse_preference_vector(pref) -> list:
+    if pref is None:
+        return [0.0] * 5
+    if isinstance(pref, list):
+        return [float(x) for x in pref]
+    if isinstance(pref, str):
+        return [float(x) for x in pref.strip("[]").split(",")]
+    return [0.0] * 5
 
 
 @router.post("/signup")
@@ -99,43 +108,46 @@ async def get_user_id(user_id: str = Depends(get_current_user)):
 
 
 @router.get("/getHasBusinessFlag")
-async def get_has_business_flag(
-    user_id: str = Depends(get_current_user),
-    conn: asyncpg.Connection = Depends(get_db)
-):
-    row = await conn.fetchrow(
-        "SELECT business_id FROM businesses WHERE business_id = (SELECT has_business_id FROM users WHERE user_id = $1)",
-        user_id
-    )
-    has_business = row is not None
-    return {"has_business": has_business}
+async def get_has_business_flag(user_id: str = Depends(get_current_user)):
+    """Uses Supabase REST API."""
+    try:
+        supabase = get_supabase()
+        user_row = await asyncio.to_thread(
+            lambda: supabase.table("users").select("has_business_id").eq("user_id", user_id).execute()
+        )
+        if not user_row.data or not user_row.data[0].get("has_business_id"):
+            return {"has_business": False}
+        biz_id = user_row.data[0]["has_business_id"]
+        biz_row = await asyncio.to_thread(
+            lambda: supabase.table("businesses").select("business_id").eq("business_id", biz_id).execute()
+        )
+        return {"has_business": bool(biz_row.data)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/profile/{user_id}")
-async def get_profile(user_id: str, conn: asyncpg.Connection = Depends(get_db)):
+async def get_profile(user_id: str):
+    """Uses Supabase REST API."""
     try:
-        user = await conn.fetchrow(
-            "SELECT user_id, name, email, preference_vector FROM users WHERE user_id = $1",
-            user_id
+        supabase = get_supabase()
+        user_row = await asyncio.to_thread(
+            lambda: supabase.table("users").select("user_id,name,email,preference_vector").eq("user_id", user_id).execute()
         )
-        if not user:
+        if not user_row.data:
             raise HTTPException(status_code=404, detail="User not found")
+        user = user_row.data[0]
 
-        reviews = await conn.fetch("""
-            SELECT r.review_id, r.text, r.stars, r.created_at,
-                   b.name as business_name, b.city as business_city, b.business_id
-            FROM reviews r
-            JOIN businesses b ON r.business_id = b.business_id
-            WHERE r.user_id = $1
-            ORDER BY r.created_at DESC
-        """, user_id)
+        reviews_raw = await asyncio.to_thread(
+            lambda: supabase.rpc("get_user_profile_reviews", {"uid": user_id}).execute()
+        )
 
         return {
             "user_id": user["user_id"],
             "name": user["name"],
             "email": user["email"],
-            "preference_vector": list(user["preference_vector"]) if user["preference_vector"] else [0] * 5,
-            "reviews": [dict(r) for r in reviews]
+            "preference_vector": parse_preference_vector(user.get("preference_vector")),
+            "reviews": reviews_raw.data or [],
         }
     except HTTPException:
         raise
@@ -148,18 +160,16 @@ async def update_profile(
     user_id: str,
     user: str = Form(...),
     profile_pic: Optional[UploadFile] = File(None),
-    conn: asyncpg.Connection = Depends(get_db)
 ):
+    """Uses Supabase REST API."""
     try:
         user_data = json.loads(user)
         name = user_data.get("name")
         email = user_data.get("email")
-
-        await conn.execute("""
-            UPDATE users SET name = $1, email = $2, updated_at = NOW()
-            WHERE user_id = $3
-        """, name, email, user_id)
-
+        supabase = get_supabase()
+        await asyncio.to_thread(
+            lambda: supabase.table("users").update({"name": name, "email": email}).eq("user_id", user_id).execute()
+        )
         return {"message": "Profile updated successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
