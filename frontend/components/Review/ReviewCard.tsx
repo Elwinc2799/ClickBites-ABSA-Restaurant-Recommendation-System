@@ -54,7 +54,9 @@ export default function ReviewCard({ review, isUser }: ReviewCardProps) {
                         {emptyStars}
                     </p>
                 </div>
-                <p className="mt-2 text-sm text-gray-500">{review.date}</p>
+                <p className="mt-2 text-sm text-gray-500">
+                    {review.date ? new Date(review.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : ''}
+                </p>
             </div>
         </div>
     );

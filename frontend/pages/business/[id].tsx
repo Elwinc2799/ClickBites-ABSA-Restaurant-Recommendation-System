@@ -146,7 +146,7 @@ function Business(props: { business: Business }) {
                                         </h3>
                                     </Link>
 
-                                    <div className="flex flex-row mt-2 mb-6">
+                                    <div className="flex flex-wrap mt-2 mb-6">
                                         {business.categories
                                             .split(', ')
                                             .map((category, index) => (
