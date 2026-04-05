@@ -13,8 +13,11 @@ from routers import business, review, user
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: initialise DB connection pool
-    await get_pool()
+    # Startup: attempt DB pool — non-fatal so Space starts even if pooler isn't ready yet
+    try:
+        await get_pool()
+    except Exception as e:
+        print(f"[startup] DB pool not ready: {e} — will retry per-request")
     yield
     # Shutdown: close pool
     await close_pool()

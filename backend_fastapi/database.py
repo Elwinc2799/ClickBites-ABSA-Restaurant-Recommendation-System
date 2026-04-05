@@ -14,11 +14,22 @@ async def get_pool() -> asyncpg.Pool:
     if _pool is None:
         _pool = await asyncpg.create_pool(
             DATABASE_URL,
-            min_size=2,
+            min_size=1,
             max_size=10,
             command_timeout=30,
+            ssl='require',
         )
     return _pool
+
+
+async def reset_pool():
+    global _pool
+    if _pool:
+        try:
+            await _pool.close()
+        except Exception:
+            pass
+    _pool = None
 
 
 async def get_db():
