@@ -288,7 +288,33 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
                 withCredentials: true,
             }
         );
-        const business = res.data;
+        const raw = res.data;
+        const scores = raw.aspect_scores || {};
+
+        const business = {
+            ...raw,
+            _id: raw.business_id || raw._id,
+            categories: Array.isArray(raw.categories)
+                ? raw.categories.join(', ')
+                : (raw.categories || ''),
+            vector: [
+                scores.food ?? 0,
+                scores.service ?? 0,
+                scores.price ?? 0,
+                scores.ambience ?? 0,
+                scores.misc ?? 0,
+            ],
+            business_pic: raw.photo_url || raw.business_pic || null,
+            view_count: raw.view_count || raw.review_count || 0,
+            description: raw.description || 'hello world',
+            hours: raw.hours || null,
+            reviews: (raw.reviews || []).map((r: any) => ({
+                ...r,
+                _id: r.review_id || r._id,
+                user_name: r.user_name || 'Anonymous',
+                date: r.created_at || r.date || '',
+            })),
+        };
 
         return {
             props: {
