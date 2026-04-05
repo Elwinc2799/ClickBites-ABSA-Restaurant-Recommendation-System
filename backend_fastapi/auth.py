@@ -19,11 +19,18 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    # Support both bcrypt-hashed and plaintext legacy passwords
+    # Try passlib first
     try:
         return pwd_context.verify(plain, hashed)
     except Exception:
-        return plain == hashed
+        pass
+    # Fallback: use bcrypt directly (handles $2a$ hashes from pgcrypto,
+    # and passlib 1.7.4 + bcrypt>=4.0 __about__ incompatibility)
+    try:
+        import bcrypt as _bcrypt
+        return _bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
 
 
 def create_token(user_id: str) -> str:
