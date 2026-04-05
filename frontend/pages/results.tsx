@@ -96,6 +96,9 @@ function Results() {
 
     // get all businesses based on search query from backend
     useEffect(() => {
+        // router.query is undefined on first render (before hydration) — skip until ready
+        if (!search_query) return;
+
         const fetchData = async () => {
             setIsLoading(true);
             const res = await axios.get(
