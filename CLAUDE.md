@@ -7,9 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ClickBites is a full-stack restaurant recommendation system using Aspect-Based Sentiment Analysis (ABSA). The system analyzes restaurant reviews to extract sentiment across five aspects (food, service, price, ambience, miscellaneous) and generates personalized recommendations using cosine similarity.
 
 **Tech Stack:**
-- Frontend: Next.js (Pages Router) with TypeScript, TailwindCSS, DaisyUI
+- Frontend: Next.js (Pages Router) with TypeScript, TailwindCSS, DaisyUI, Leaflet + OpenStreetMap
 - Backend: Flask (Python 3.10) with BERT + VADER for sentiment analysis
-- Database: MongoDB
+- Database: MongoDB (migrating to Supabase PostgreSQL for production)
 - Data: Yelp Open Dataset
 
 ## Development Commands
@@ -149,10 +149,11 @@ const nextConfig = {
 module.exports = {
     env: {
         API_URL: 'http://127.0.0.1:5000',
-        NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: 'your-api-key',
     },
 };
 ```
+
+**Note:** Maps now use Leaflet + OpenStreetMap (no API key required).
 
 ### Backend Configuration
 

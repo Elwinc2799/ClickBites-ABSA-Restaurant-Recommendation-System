@@ -197,7 +197,7 @@ async def update_business_scores(conn: asyncpg.Connection, business_id: str):
 
 # ─── Routes ──────────────────────────────────────────────────────────────────
 
-@router.post("/business/{business_id}/review")
+@router.post("/business/{business_id}")
 async def create_review(
     business_id: str,
     body: ReviewCreate,
@@ -224,7 +224,7 @@ async def create_review(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/business/{business_id}/review/{review_id}")
+@router.put("/business/{business_id}/{review_id}")
 async def update_review(
     business_id: str,
     review_id: str,
@@ -248,7 +248,7 @@ async def update_review(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/business/{business_id}/review/{review_id}")
+@router.delete("/business/{business_id}/{review_id}")
 async def delete_review(
     business_id: str,
     review_id: str,
