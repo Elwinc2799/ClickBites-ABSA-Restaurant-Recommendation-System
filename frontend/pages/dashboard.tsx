@@ -54,7 +54,7 @@ function Dashboard() {
         const fetchData = async () => {
             setIsLoading(true);
             try {
-                const response = await axios.get<Business>(
+                const response = await axios.get(
                     `${process.env.API_URL}/api/dashboard`,
                     {
                         headers: {
@@ -64,6 +64,16 @@ function Dashboard() {
                     }
                 );
 
+                const raw = response.data;
+                const scores = raw.aspect_scores || {};
+                const vector = [
+                    scores.food ?? 0,
+                    scores.service ?? 0,
+                    scores.price ?? 0,
+                    scores.ambience ?? 0,
+                    scores.misc ?? 0,
+                ];
+
                 const newVectorText = [
                     'Food',
                     'Service',
@@ -72,8 +82,7 @@ function Dashboard() {
                     'Miscellaneous',
                 ];
 
-                // cast each userData.vector to a string
-                let newVector = response.data.vector.map(
+                let newVector = vector.map(
                     (value: number, index: number) => {
                         return {
                             text: newVectorText[index],
@@ -84,7 +93,28 @@ function Dashboard() {
 
                 setVectorScores(newVector);
 
-                setBusiness(response.data);
+                const business: Business = {
+                    ...raw,
+                    _id: raw.business_id || raw._id,
+                    business_pic: raw.photo_url || raw.business_pic || null,
+                    vector,
+                    view_count: raw.view_count || raw.review_count || 0,
+                    categories: Array.isArray(raw.categories)
+                        ? raw.categories.join(', ')
+                        : (raw.categories || ''),
+                    reviews: (raw.reviews || []).map((r: any) => ({
+                        _id: r.review_id || r._id || '',
+                        user_id: r.user_id || '',
+                        business_id: raw.business_id || '',
+                        business_name: raw.name || '',
+                        business_city: raw.city || '',
+                        stars: r.stars || 0,
+                        text: r.text || '',
+                        date: r.created_at || r.date || '',
+                    })),
+                };
+
+                setBusiness(business);
             } catch (error) {
                 console.log(
                     'There was an error fetching the business data',
