@@ -7,96 +7,77 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ClickBites is a full-stack restaurant recommendation system using Aspect-Based Sentiment Analysis (ABSA). The system analyzes restaurant reviews to extract sentiment across five aspects (food, service, price, ambience, miscellaneous) and generates personalized recommendations using cosine similarity.
 
 **Tech Stack:**
-- Frontend: Next.js (Pages Router) with TypeScript, TailwindCSS, DaisyUI, Leaflet + OpenStreetMap
-- Backend: Flask (Python 3.10) with BERT + VADER for sentiment analysis
-- Database: MongoDB (migrating to Supabase PostgreSQL for production)
-- Data: Yelp Open Dataset
+- Frontend: Next.js 15 (Pages Router) with TypeScript, TailwindCSS, DaisyUI, Leaflet + OpenStreetMap
+- Backend: FastAPI (Python 3.10) hosted on HuggingFace Spaces (Docker SDK)
+- Database: Supabase PostgreSQL (ap-southeast-1)
+- AI/ML: Fine-tuned BERT (aspect extraction) + VADER (sentiment analysis)
+
+**Live site:** https://clickbites.vercel.app  
+**Backend API:** https://elwinc2799-clickbites-api.hf.space
+
+**Legacy Flask backend** is preserved in `backend_legacy/` for reference only — do not modify it.
 
 ## Development Commands
 
 ### Frontend (Next.js)
 
 ```bash
-# Navigate to frontend directory
 cd frontend
 
 # Install dependencies
-yarn install
-# or
 npm install
 
 # Run development server (http://localhost:3000)
-yarn dev
-# or
 npm run dev
 
 # Build for production
-yarn build
-# or
 npm run build
 
 # Lint code
-yarn lint
-# or
 npm run lint
 ```
 
-### Backend (Flask)
+### Backend (FastAPI)
 
 ```bash
-# Navigate to backend directory
 cd backend
 
 # Create and activate conda environment
-conda create --name myenv python=3.10
-conda activate myenv
+conda create --name clickbites python=3.10
+conda activate clickbites
 
-# Install dependencies
-conda install --file requirements.txt
-# or
-conda env update --name myenv --file environment.yml
+pip install -r requirements.txt
 
-# Run Flask server (http://localhost:5000)
+# Run FastAPI server (http://localhost:8000)
 python3 app.py
-```
-
-### Database Setup
-
-```bash
-# Navigate to data directory
-cd data
-
-# Map photos from Yelp dataset
-python3 photos_mapping.py
-
-# Import JSON data to MongoDB
-python3 import_json.py
 ```
 
 ## Architecture
 
-### Backend Structure
+### Backend Structure (`backend/`)
 
-The Flask backend uses a **blueprint-based architecture** with three main domains:
+The FastAPI backend uses a **router-based architecture**:
 
-- `business/` - Restaurant data and operations (routes.py, models.py)
-- `review/` - Review data and analysis (routes.py, models.py)
-- `user/` - User data and preferences (routes.py, models.py)
-- `ai/` - ABSA model pipeline (generate_vector.py)
+- `routers/business.py` - Restaurant search and detail endpoints
+- `routers/review.py` - Review submission + ABSA inference
+- `routers/user.py` - Auth, profile, preference vector updates
+- `ai/generate_vector.py` - ABSA pipeline (BERT + VADER)
 
 **Key files:**
-- `app.py` - Entry point, registers blueprints, configures CORS
-- `database.py` - Singleton MongoDB connection manager
-- `config.py` - Configuration (MONGO_URI, MONGO_PORT, MONGO_TIMEOUT) - **not in git**
+- `app.py` - Entry point, registers routers, configures CORS
+- `auth.py` - JWT token creation and verification
+- `database.py` - Supabase client singleton (uses `supabase-py` REST API, not direct PostgreSQL)
+
+**Important:** The backend uses the Supabase Python REST client exclusively — no direct asyncpg/psycopg2 connections. This is required because HuggingFace Spaces is IPv4-only and Supabase's direct DB host is IPv6.
 
 ### AI/ML Pipeline
 
 The ABSA system (`backend/ai/generate_vector.py`) works as follows:
 
-1. **Aspect Extraction**: Fine-tuned BERT model (`fine_tuned_model/`) identifies which aspect (food, service, price, ambience, misc) each review sentence refers to
-2. **Sentiment Analysis**: VADER analyzes sentiment polarity for each aspect-opinion pair
+1. **Aspect Extraction**: Fine-tuned BERT model classifies each review sentence into food/service/price/ambience/misc
+2. **Sentiment Analysis**: VADER analyzes polarity for each aspect-opinion pair
 3. **Vector Representation**: Each review is represented as a 5D vector (one score per aspect)
-4. **Recommendation**: User preference scores and restaurant aspect scores are calculated, then matched using cosine similarity
+4. **Recommendation**: Cosine similarity between user preference vector and restaurant aspect score vector
 
 **Required AI files** (downloaded separately from Google Drive):
 - `backend/ai/fine_tuned_model/` - Fine-tuned BERT model directory
@@ -108,31 +89,29 @@ The ABSA system (`backend/ai/generate_vector.py`) works as follows:
 Next.js uses the **Pages Router** (not App Router):
 
 - `pages/` - Route pages (index.tsx, dashboard.tsx, results.tsx, profile.tsx, etc.)
-- `pages/api/` - API routes (if any client-side API handlers)
 - `components/` - Feature-based component organization:
   - `Dashboard/` - User dashboard components
-  - `BusinessDetails/` - Restaurant detail views
-  - `Layout/` - Layout wrapper components
-  - `NavigationBar/` - Navigation components
-  - `utils/` - Shared utilities
+  - `BusinessDetails/` - Restaurant detail views + AddReviewForm
+  - `SharedComponents/` - AspectRadar (recharts RadarChart)
+  - `Map/` - Leaflet map with drag-to-filter
+  - `NavigationBar/` - NavBar
+  - `Layout/` - Footer, Background
+  - `utils/` - UseLoginStatus, UseLoadingAnimation, UseHasBusinessStatus
 
 **Styling**: TailwindCSS + DaisyUI for component library
 
 ### API Communication
 
-- Frontend makes REST API calls to Flask backend
-- Backend runs on `http://localhost:5000`
-- Frontend configured via `next.config.js` with `API_URL` environment variable
-- CORS enabled in `app.py` for `http://localhost:3000`
+- Frontend makes REST API calls to FastAPI backend via `process.env.API_URL`
+- Backend runs on `http://localhost:8000` locally
+- Production API: `https://elwinc2799-clickbites-api.hf.space`
+- CORS enabled in `app.py` for `http://localhost:3000` and the Vercel frontend URL
 
-### Database Schema
+### Database Schema (Supabase PostgreSQL)
 
-MongoDB (`ckbt_db`) contains collections for:
-- **businesses** - Restaurant data (name, location, categories, aspect scores)
-- **reviews** - Review text and generated 5D aspect vectors
-- **users** - User data and preference vectors
-
-The `database.py` uses a **singleton pattern** to manage the MongoDB connection.
+- **businesses** - Restaurant data: name, location, categories, `aspect_scores` (JSONB with food/service/price/ambience/misc), `photo_url`
+- **reviews** - Review text, star rating, `aspect_vector` (pgvector), `user_id`, `business_id`
+- **users** - Credentials, `preference_vector` (5D), `has_business_id`
 
 ## Configuration Files
 
@@ -141,42 +120,45 @@ The `database.py` uses a **singleton pattern** to manage the MongoDB connection.
 Create `frontend/next.config.js` (not in git):
 
 ```javascript
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-    reactStrictMode: true,
-};
-
 module.exports = {
     env: {
-        API_URL: 'http://127.0.0.1:5000',
+        API_URL: 'http://127.0.0.1:8000',
     },
 };
 ```
 
-**Note:** Maps now use Leaflet + OpenStreetMap (no API key required).
+To use the production backend instead of running locally:
+```javascript
+module.exports = {
+    env: {
+        API_URL: 'https://elwinc2799-clickbites-api.hf.space',
+    },
+};
+```
 
 ### Backend Configuration
 
-Create `backend/config.py` (not in git):
+Create `backend/.env` (not in git):
 
-```python
-MONGO_URI = "your-mongodb-connection-string"
-MONGO_PORT = 5000
-MONGO_TIMEOUT = 1000
+```env
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-service-role-key
+JWT_SECRET=your-jwt-secret
+FRONTEND_URL=http://localhost:3000
 ```
 
 ## Data Flow
 
-1. **User submits preferences** → Frontend sends to Flask API
-2. **Flask receives request** → Loads user preference vector from MongoDB
-3. **AI pipeline processes** → If new reviews, BERT extracts aspects, VADER analyzes sentiment
+1. **User submits preferences** → Frontend sends to FastAPI
+2. **FastAPI receives request** → Reads user preference vector from Supabase
+3. **AI pipeline processes** → BERT extracts aspects, VADER analyzes sentiment, updates vectors
 4. **Similarity calculation** → Cosine similarity between user preferences and restaurant aspect scores
 5. **Results returned** → Ranked recommendations sent to frontend
-6. **Frontend displays** → Results page shows personalized restaurant recommendations with aspect scores
+6. **Frontend displays** → Results page with aspect score rings, distance filtering via geolocation
 
 ## Important Notes
 
 - The fine-tuned BERT model and label encoder must be downloaded manually from Google Drive (see README)
-- Photos are processed separately using `data/photos_mapping.py` and stored in `frontend/public/business_photo/`
-- The system requires both frontend and backend servers running simultaneously
-- MongoDB must be running locally or accessible via the configured MONGO_URI
+- Photos: `frontend/public/business_photo/` contains Yelp dataset photos; missing photos fall back to random food category images (`cafe.jpg`, `chinese.jpg`, etc.)
+- Maps use Leaflet + OpenStreetMap — no API key required
+- Distance filtering uses browser geolocation (20km radius); fires automatically on page load if permission is granted

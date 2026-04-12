@@ -23,14 +23,14 @@ ClickBites is a full-stack restaurant recommendation system powered by Aspect-Ba
 
 ### AI Pipeline
 
-Located in `backend_fastapi/ai/generate_vector.py`:
+Located in `backend/ai/generate_vector.py`:
 
 1. **Aspect Extraction** — Fine-tuned BERT model classifies each review sentence into one of five aspects: food, service, price, ambience, misc
 2. **Sentiment Analysis** — VADER calculates polarity for each aspect-opinion pair
 3. **Vector Representation** — Each review becomes a 5D vector (one score per aspect)
 4. **Recommendation** — Cosine similarity between a user's preference vector and each restaurant's aspect score vector produces a ranked list
 
-### Backend Structure (`backend_fastapi/`)
+### Backend Structure (`backend/`)
 
 ```
 app.py          — FastAPI entry point, CORS, router registration
@@ -129,15 +129,15 @@ JWT_SECRET=your-jwt-secret
 FRONTEND_URL=http://localhost:3000
 ```
 
-Download the required AI model files from Google Drive and place them in `backend_fastapi/ai/`:
+Download the required AI model files from Google Drive and place them in `backend/ai/`:
 
 ```
 https://drive.google.com/drive/folders/1KruFCU66A7bPACEN3owDbu7JeC3wR6QY?usp=sharing
 ```
 
 Required files:
-- `backend_fastapi/ai/fine_tuned_model/` — Fine-tuned BERT model directory
-- `backend_fastapi/ai/label_encoder.pkl` — Aspect label encoder
+- `backend/ai/fine_tuned_model/` — Fine-tuned BERT model directory
+- `backend/ai/label_encoder.pkl` — Aspect label encoder
 
 Start the server:
 

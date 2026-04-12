@@ -25,27 +25,16 @@ random.seed(random_seed)
 # Load spaCy model
 nlp = spacy.load("en_core_web_sm")
 
-# Use paths relative to this file so it works from any working directory
-_ai_dir = os.path.dirname(os.path.realpath(__file__))
-
-# Load the fine-tuned model from HF Hub (private repo) or local fallback
-_local_model_path = os.path.join(_ai_dir, "fine_tuned_model")
-_hf_model_id = os.getenv("HF_MODEL_ID", "Elwinc2799/clickbites-absa-bert")
-
-if os.path.isdir(_local_model_path) and os.listdir(_local_model_path):
-    model = AutoModelForSequenceClassification.from_pretrained(_local_model_path)
-else:
-    model = AutoModelForSequenceClassification.from_pretrained(
-        _hf_model_id,
-        token=os.getenv("HF_TOKEN")
-    )
+# Load the fine-tuned model and tokenizer
+model_path = "./ai/fine_tuned_model"
+model = AutoModelForSequenceClassification.from_pretrained(model_path)
 
 # Initialize tokenizer
 model_used = "bert-large-uncased"
 tokenizer = AutoTokenizer.from_pretrained(model_used)
 
-# Load the label encoder from local path
-with open(os.path.join(_ai_dir, "label_encoder.pkl"), "rb") as f:
+# Load the label encoder
+with open("./ai/label_encoder.pkl", "rb") as f:
     label_encoder = pickle.load(f)
 
 print("Loading the model...")

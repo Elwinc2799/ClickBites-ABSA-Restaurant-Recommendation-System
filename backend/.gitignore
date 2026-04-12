@@ -1,2 +1,8 @@
-config.py
-**/__pycache__/
+.env
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+ai/fine_tuned_model/
+ai/label_encoder.pkl

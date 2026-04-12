@@ -1,28 +1,45 @@
-from pymongo import MongoClient
-from config import MONGO_URI, MONGO_PORT, MONGO_TIMEOUT
+import os
+import asyncpg
+from dotenv import load_dotenv
 
-# Singleton class for MongoDB connection
-class Database:
-    __instance = None
+load_dotenv()
 
-    @staticmethod
-    def get_instance():
-        if Database.__instance == None:
-            Database()
-        return Database.__instance
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-    def __init__(self):
-        if Database.__instance != None:
-            raise Exception("Database connection already exists")
-        else:
-            try:
-                self.client = MongoClient(MONGO_URI, port=MONGO_PORT, serverSelectionTimeoutMS=MONGO_TIMEOUT)
-                self.client.server_info()
-                print("Connected to MongoDB")
-                Database.__instance = self
-            except Exception as e:
-                print(e)
-                print("Could not connect to MongoDB")
+_pool: asyncpg.Pool = None
 
-    def get_db(self, db_name):
-        return self.client.ckbt_db[db_name]
+
+async def get_pool() -> asyncpg.Pool:
+    global _pool
+    if _pool is None:
+        _pool = await asyncpg.create_pool(
+            DATABASE_URL,
+            min_size=1,
+            max_size=10,
+            command_timeout=30,
+            ssl='require',
+        )
+    return _pool
+
+
+async def reset_pool():
+    global _pool
+    if _pool:
+        try:
+            await _pool.close()
+        except Exception:
+            pass
+    _pool = None
+
+
+async def get_db():
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        yield conn
+
+
+async def close_pool():
+    global _pool
+    if _pool:
+        await _pool.close()
+        _pool = None
