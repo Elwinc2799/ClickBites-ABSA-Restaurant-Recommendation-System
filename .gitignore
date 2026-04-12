@@ -1,3 +1,19 @@
-.worktrees/
+# Credentials
 clickbites-credentials.txt
+
+# Git worktrees
+.worktrees/
+
+# Claude Code / vibe-coding tooling
+.agents/
+.claude/
 .gstack/
+.playwright-mcp/
+skills-lock.json
+
+# Dependency lock files (project uses npm — package-lock.json is the source of truth)
+frontend/yarn.lock
+
+# Large AI model files (download separately from Google Drive)
+**/ai/fine_tuned_model/
+**/ai/label_encoder.pkl
