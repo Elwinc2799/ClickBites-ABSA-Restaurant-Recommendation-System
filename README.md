@@ -1,219 +1,175 @@
-# ClickBites - ABSA Restaurant Recommendation System
+# ClickBites — ABSA Restaurant Recommendation System
 
-Welcome to ClickBites, an innovative full-stack restaurant recommendation system that leverages the power of aspect-based sentiment analysis of reviews. Our system analyses a vast range of restaurant reviews, primarily focusing on the Yelp Open Dataset (US restaurants), but we have also included a selection of local Malaysian restaurants to broaden your dining horizon.  
+ClickBites is a full-stack restaurant recommendation system powered by Aspect-Based Sentiment Analysis (ABSA). It analyses restaurant reviews to extract sentiment across five aspects — food, service, price, ambience, and miscellaneous — then ranks recommendations for each user using cosine similarity.
 
-## Overview
+**Live site:** https://clickbites.vercel.app
 
-ClickBites utilizes a high-tech AI modeling pipeline that includes a fine-tuned BERT model for aspect extraction and the VADER sentiment analyzer. The system identifies five key aspects: food, service, price, ambience, and miscellaneous factors. Each review is represented by a 5D vector, the result of mapping each aspect-opinion pair's polarity. Then, we calculate the preference score for each user entity and the aspect score for each restaurant entity. Ultimately, we generate personalized restaurant recommendations ranked using cosine similarity metrics.
+---
 
-Our tech stack includes the Next.js front-end framework using Typescript, the Flask back-end framework using Python, CRUD operations implemented using REST API, and MongoDB as the cloud database.
+## Tech Stack
 
-## Setting Up and Running ClickBites
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js (Pages Router) · TypeScript · TailwindCSS · DaisyUI |
+| Maps | Leaflet + OpenStreetMap (no API key required) |
+| Backend | FastAPI (Python 3.10) hosted on HuggingFace Spaces (Docker) |
+| Database | Supabase PostgreSQL |
+| AI / ML | Fine-tuned BERT (aspect extraction) + VADER (sentiment analysis) |
+| Charts | Recharts (RadarChart for aspect score visualisation) |
 
-Follow the steps below to setup and run ClickBites on your local environment:
+---
+
+## Architecture
+
+### AI Pipeline
+
+Located in `backend_fastapi/ai/generate_vector.py`:
+
+1. **Aspect Extraction** — Fine-tuned BERT model classifies each review sentence into one of five aspects: food, service, price, ambience, misc
+2. **Sentiment Analysis** — VADER calculates polarity for each aspect-opinion pair
+3. **Vector Representation** — Each review becomes a 5D vector (one score per aspect)
+4. **Recommendation** — Cosine similarity between a user's preference vector and each restaurant's aspect score vector produces a ranked list
+
+### Backend Structure (`backend_fastapi/`)
+
+```
+app.py          — FastAPI entry point, CORS, router registration
+auth.py         — JWT token handling
+database.py     — Supabase client singleton
+routers/
+  business.py   — Restaurant search and detail endpoints
+  review.py     — Review submission + ABSA inference
+  user.py       — Auth, profile, preference vector
+ai/
+  generate_vector.py   — ABSA pipeline
+  fine_tuned_model/    — BERT model (downloaded separately)
+  label_encoder.pkl    — Aspect label encoder (downloaded separately)
+```
+
+### Frontend Structure (`frontend/`)
+
+```
+pages/
+  index.tsx           — Landing page
+  dashboard.tsx        — User dashboard
+  results.tsx          — Search results with distance filtering
+  profile.tsx          — User profile and review history
+  business/[id].tsx    — Restaurant detail + AspectRadar chart
+  login.tsx / signup.tsx / registerbusiness.tsx
+components/
+  ResultCard/          — Search result card with aspect score rings
+  SharedComponents/    — AspectRadar (recharts RadarChart)
+  Map/                 — Leaflet map with drag-to-filter
+  Dashboard/           — Profile card, preference input
+  NavigationBar/
+  Layout/
+```
+
+### API Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/health` | Health check |
+| `POST` | `/api/signup` | Register new user |
+| `POST` | `/api/login` | Login, returns JWT |
+| `GET` | `/api/results?search_query=` | Search restaurants |
+| `GET` | `/api/business/{id}` | Restaurant detail |
+| `POST` | `/api/business/{id}/review` | Submit review (triggers ABSA) |
+| `GET` | `/api/profile/{user_id}` | User profile + review history |
+| `PUT` | `/api/updateprofile/{user_id}` | Update user preferences |
+| `GET` | `/api/getHasBusinessFlag/{user_id}` | Check if user owns a business |
+
+---
+
+## Local Development
 
 ### Prerequisites
 
-Ensure the following technologies are installed on your machine:
-- Node.js and npm
-- Python 3.10
-- MongoDB 
+- Node.js 18+ and yarn (or npm)
+- Python 3.10 and Conda
+- A Supabase project (or use the production instance)
 
-### Steps
+### 1. Frontend
 
-1. **Clone the Repository**: 
+```bash
+cd frontend
+yarn install
 
-   ```
-   git clone https://github.com/Elwinc2799/ClickBites.git
-   ```
-   
-2. **Front-End Setup**:
+# Create next.config.js
+cat > next.config.js << 'EOF'
+module.exports = {
+    env: {
+        API_URL: 'http://127.0.0.1:8000',
+    },
+};
+EOF
 
-    Navigate to the front-end directory:
+yarn dev   # http://localhost:3000
+```
 
-    ```
-    cd frontend
-    ```
+> Point `API_URL` at the HuggingFace Spaces backend to skip running the backend locally:
+> `API_URL: 'https://elwinc2799-clickbites-api.hf.space'`
 
-    Install the necessary npm packages using yarn or npm:
+### 2. Backend
 
-    ```
-    yarn install 
-    ```
-    or 
-    ```
-    npm install
-    ```
+```bash
+cd backend_fastapi
 
-    Create a `next.config.js` file in the root of your frontend folder. Paste the following code into the file:
+conda create --name clickbites python=3.10
+conda activate clickbites
+pip install -r requirements.txt
+```
 
-    ```javascript
-    /** @type {import('next').NextConfig} */
-    const nextConfig = {
-        reactStrictMode: true,
-    };
+Create a `.env` file:
 
-    module.exports = {
-        env: {
-            API_URL: 'http://127.0.0.1:5000',
-            NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: 'xxxxxxxx',
-        },
-    };
-    ```
-    Replace `'xxxxxxxx'` with your Google Maps API Key.
+```env
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-anon-or-service-role-key
+JWT_SECRET=your-jwt-secret
+FRONTEND_URL=http://localhost:3000
+```
 
-    To run the application, start the Next.js server by running:
+Download the required AI model files from Google Drive and place them in `backend_fastapi/ai/`:
 
-    ```
-    yarn dev
-    ```
-    or
-    ```
-    npm run dev
-    ```
+```
+https://drive.google.com/drive/folders/1KruFCU66A7bPACEN3owDbu7JeC3wR6QY?usp=sharing
+```
 
-    By default, the server runs on `http://localhost:3000`
+Required files:
+- `backend_fastapi/ai/fine_tuned_model/` — Fine-tuned BERT model directory
+- `backend_fastapi/ai/label_encoder.pkl` — Aspect label encoder
 
-3. **Back-End Setup**:
+Start the server:
 
-    Follow these steps to set up the back-end for different operating systems:
+```bash
+python app.py   # http://localhost:8000
+```
 
-    For Unix or MacOS:
+---
 
-    1. Open a new terminal window, navigate to the back-end directory:
-        ```
-        cd backend
-        ```
-    2. Create a `config.py` file in the root of your backend folder. Paste the following code into the file:
-        ```
-        MONGO_URI = "xxxxxxxx"
-        MONGO_PORT = 5000
-        MONGO_TIMEOUT = 1000
-        ```
-        Replace "xxxxxxxx" with your MongoDB connection string.
-    3. Download the `fine_tuned_model` folder and `label_encoder.pkl` file from the provided link:
+## Production Deployment
 
-        ```
-        https://drive.google.com/drive/folders/1KruFCU66A7bPACEN3owDbu7JeC3wR6QY?usp=sharing
-        ```
-    4. Save these files into the `backend/ai` directory of your local project repository.
-    5. Create a new Conda environment and activate it:
-        ```
-        conda create --name myenv python=3.10
-        conda activate myenv
-        ```
-    6. Install the necessary packages using:
-        ```
-        conda install --file requirements.txt
-        ```
-        or
-        ```
-        conda env update --name myenv --file environment.yml
-        ```
-    7. Start the Flask server:
-        ```
-        python3 app.py
-        ```
-    By default, the server runs on `http://localhost:5000`
+| Service | Platform | URL |
+|---|---|---|
+| Frontend | Vercel | https://clickbites.vercel.app |
+| Backend | HuggingFace Spaces (Docker) | https://elwinc2799-clickbites-api.hf.space |
+| Database | Supabase (ap-southeast-1) | — |
 
-    For Windows:
+Vercel deploys automatically on every push to `main`. The backend on HuggingFace Spaces is deployed by pushing files to the HF Space repository.
 
-    1. Open Command Prompt, navigate to the back-end directory:
-        ```
-        cd backend
-        ```
-    2. Create a `config.py` file in the root of your backend folder. Paste the following code into the file:
-        ```
-        MONGO_URI = "xxxxxxxx"
-        MONGO_PORT = 5000
-        MONGO_TIMEOUT = 1000
-        ```
-        Replace "xxxxxxxx" with your MongoDB connection string.
-    3. Download the `fine_tuned_model` folder and `label_encoder.pkl` file from the provided link:
+---
 
-        ```
-        https://drive.google.com/drive/folders/1KruFCU66A7bPACEN3owDbu7JeC3wR6QY?usp=sharing
-        ```
-    4. Save these files into the `backend/ai` directory of your local project repository.
-    5. Create a new Conda environment and activate it:
-        ```
-        conda create --name myenv python=3.8
-        activate myenv
-        ```
-    6. Install the necessary packages:
-        ```
-        conda install --file requirements.txt
-        ```
-        or
-        ```
-        conda env update --name myenv --file environment.yml
-        ```
-    7. Start the Flask server:
-        ```
-        python app.py
-        ```
-    By default, the server runs on `http://localhost:5000`
+## Database
 
-    **Note:** 
-    - The `environment.yml` file is a file you should create when you export your Conda environment using the command `conda env export > environment.yml`.
-    - Before starting, ensure that you have [Anaconda](https://www.anaconda.com/products/distribution) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html) installed. These distribution packages include Conda, Python, and other commonly used packages in scientific computing and data science.
+The Supabase PostgreSQL database (`clickbites-prod`) contains:
 
-    Ensure you have the necessary permissions to execute these commands in your terminal/command prompt. If there are permission issues, try running the Command Prompt as an Administrator or consult the respective software documentation.
+- **businesses** — Restaurant data: name, location, categories, aspect scores (`food`, `service`, `price`, `ambience`, `misc`), `photo_url`
+- **reviews** — Review text, star rating, aspect vector, user and business foreign keys
+- **users** — User credentials, `preference_vector` (5D), `has_business_id`
 
-4. **Database Setup**:
+The backend uses the Supabase Python REST client (`supabase-py`) exclusively — no direct PostgreSQL connections — to ensure compatibility with HuggingFace Spaces (IPv4-only).
 
-    Make sure MongoDB service is running on your machine. To set up the database:
-
-    1. To download the photos for each restaurant:
-
-    Navigate to `https://www.yelp.com/dataset/download` to download the photos content.
-
-    2. Move the downloaded photos.json to the directory which contains the photos_mapping.py and business.json file. 
-
-    3. Start the mapping process to select the photos based on available business ids:
-    
-    For Unix or MacOS, 
-
-    ```
-    cd data
-    python3 photos_mapping.py 
-    ```
-    
-    For Windows, 
-
-    ```
-    cd data
-    py photos_mapping.py
-    ```
-
-    A `business_photo` folder containing all required business photos is created.
-
-    4. Move the `business_photo` folder to `./frontend/public`
-
-    5. Start the import process:
-    
-    For Unix or MacOS,
-
-    ```
-    python3 import_json.py
-    ```
-    
-    For Windows,
-    ```
-    py import_json.py
-    ```
-    
-    The application will automatically create the necessary database and collections based on the provided schema in the code.
-
-5. **Connecting the Dots**:
-
-    Once the front-end and back-end servers are running, and the database is set, navigate to `http://localhost:3000` on your browser to start using ClickBites.
-
-## Conclusion
-
-With ClickBites, we aim to revolutionize the way you choose your dining experiences. By using AI technologies to understand your unique preferences, we provide highly personalized restaurant recommendations that cater to your taste. Enjoy discovering new restaurants with ClickBites!
-
-Please feel free to contribute to this project by submitting issues or pull requests.
+---
 
 ## License
 
