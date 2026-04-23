@@ -113,7 +113,7 @@ yarn dev   # http://localhost:3000
 ### 2. Backend
 
 ```bash
-cd backend_fastapi
+cd backend
 
 conda create --name clickbites python=3.10
 conda activate clickbites
@@ -156,6 +156,17 @@ python app.py   # http://localhost:8000
 | Database | Supabase (ap-southeast-1) | — |
 
 Vercel deploys automatically on every push to `main`. The backend on HuggingFace Spaces is deployed by pushing files to the HF Space repository.
+
+---
+
+## Test Accounts
+
+Use these on the live site (https://clickbites.vercel.app) to try the authenticated flows.
+
+| Role | Email | Password | What to test |
+|---|---|---|---|
+| Normal user | `testuser@clickbites.test` | `TestUser123!` | Dashboard, profile, preference vector, submit reviews, get personalised recommendations |
+| Business owner | `bizowner@clickbites.test` | `BizOwner123!` | Business owner dashboard (linked to *Penang Road Famous Teochew Chendul*), view/edit business details, see aggregated aspect scores |
 
 ---
 
