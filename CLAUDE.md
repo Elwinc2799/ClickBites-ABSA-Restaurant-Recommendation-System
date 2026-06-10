@@ -48,6 +48,9 @@ conda activate clickbites
 
 pip install -r requirements.txt
 
+# Download the spaCy model used by the ABSA pipeline (NOT pulled in by requirements.txt)
+python -m spacy download en_core_web_sm
+
 # Run FastAPI server (http://localhost:8000)
 python3 app.py
 ```
@@ -66,9 +69,9 @@ The FastAPI backend uses a **router-based architecture**:
 **Key files:**
 - `app.py` - Entry point, registers routers, configures CORS
 - `auth.py` - JWT token creation and verification
-- `database.py` - Supabase client singleton (uses `supabase-py` REST API, not direct PostgreSQL)
+- `database.py` - Supabase REST client (`supabase-py`) used by all routers, plus a best-effort asyncpg pool (`get_pool`/`close_pool`) that `app.py` initializes but no router actually uses
 
-**Important:** The backend uses the Supabase Python REST client exclusively — no direct asyncpg/psycopg2 connections. This is required because HuggingFace Spaces is IPv4-only and Supabase's direct DB host is IPv6.
+**Important:** All router data access goes through the Supabase Python REST client (`supabase.table(...)` / `supabase.rpc(...)`) — treat it as the only working data path. `database.py` *does* define a direct asyncpg pool and `app.py` initializes it on startup, but the call is non-fatal and no router uses it: it targets Supabase's direct DB host (IPv6-only), which is unreachable from HuggingFace Spaces (IPv4-only). The asyncpg pool is therefore vestigial — don't add queries through it expecting them to work in production.
 
 ### AI/ML Pipeline
 
